@@ -1,0 +1,1137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0d1114">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cell Counter">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>:root{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}</style>
+<title>Neubauer Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: photo rail | viewer | results panel on a wide iPad; stacked rail / viewer / panel when narrow.
+   Look: a dark instrument surround so the grey micrograph and the cyan markers read clearly at the bench. */
+:root {
+  --bg: #0d1114; --surface: #141a1e; --surface-2: #1b2328; --line: #28333b;
+  --fg: #e8eef1; --fg-dim: #94a4af; --accent: #3ccadf; --accent-ink: #04222a; --accent-soft: rgba(60,202,223,.15);
+  --warn: #f5b042; --bad: #ff7272; --good: #5fd49b; --stage: #080b0d;
+  --ov-cell: #3ccadf; --ov-manual: #ffb340; --ov-removed: #ff7272; --ov-grid: rgba(255,255,255,.6);
+  --font-ui: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.28);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #e9eef1; --surface: #ffffff; --surface-2: #f0f4f6; --line: #d3dce1;
+    --fg: #14202a; --fg-dim: #55656f; --accent: #08788c; --accent-ink: #ffffff; --accent-soft: rgba(8,120,140,.11);
+    --warn: #a86400; --bad: #c42b2b; --good: #17794e; --shadow: 0 1px 2px rgba(20,32,42,.08), 0 6px 18px rgba(20,32,42,.07);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #e9eef1; --surface: #ffffff; --surface-2: #f0f4f6; --line: #d3dce1;
+  --fg: #14202a; --fg-dim: #55656f; --accent: #08788c; --accent-ink: #ffffff; --accent-soft: rgba(8,120,140,.11);
+  --warn: #a86400; --bad: #c42b2b; --good: #17794e; --shadow: 0 1px 2px rgba(20,32,42,.08), 0 6px 18px rgba(20,32,42,.07);
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-ui); -webkit-text-size-adjust: 100%; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.app { height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; min-height: 0; }
+
+/* top bar */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { flex: none; }
+.brand b { font-weight: 600; font-size: 17px; letter-spacing: .01em; white-space: nowrap; }
+.brand span { color: var(--fg-dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.actions { display: flex; gap: 8px; flex: none; }
+.btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+.btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.small { min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 8px; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+/* main shell */
+.shell { flex: 1; min-height: 0; display: grid; gap: 12px; grid-template-columns: 112px minmax(0, 1fr) 320px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); min-width: 0; min-height: 0; }
+.card h2 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--fg-dim); }
+
+/* rail */
+.rail { display: flex; flex-direction: column; overflow: hidden; }
+.rail-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 12px 10px 6px 12px; }
+.photos { list-style: none; margin: 0; padding: 4px 8px 8px; overflow: auto; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
+.ph { display: grid; gap: 4px; padding: 5px; border-radius: 10px; border: 1px solid transparent; width: 100%; cursor: pointer; }
+.ph:hover { background: var(--surface-2); }
+.ph[aria-current="true"] { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.ph .th { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: var(--stage) center / cover no-repeat; border: 1px solid var(--line); }
+.ph .chip { position: absolute; left: 4px; bottom: 4px; min-width: 28px; padding: 1px 7px; border-radius: 6px; background: rgba(8,11,13,.82); color: #f2f7f9; font-size: 14px; font-weight: 500; text-align: center; }
+.ph .chip.flag { color: var(--ov-manual); }
+.ph .nm { font-size: 12px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); display: inline-block; }
+.dot.busy { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.rail-empty { padding: 4px 12px 14px; color: var(--fg-dim); font-size: 12px; line-height: 1.4; }
+
+/* stage */
+.stage { display: flex; flex-direction: column; overflow: hidden; }
+.stage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.stage-bar .sp { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg .btn { border: 0; border-radius: 0; background: var(--surface-2); }
+.seg .btn + .btn { border-left: 1px solid var(--line); }
+.viewport { position: relative; flex: 1; min-height: 220px; background: var(--stage); overflow: hidden; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+#cv.grab { cursor: grab; }
+.badge { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: baseline; gap: 8px; padding: 8px 14px; border-radius: 12px; background: rgba(8,11,13,.78); border: 1px solid rgba(255,255,255,.14); color: #f2f7f9; pointer-events: none; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.badge .big { font-size: 40px; line-height: 1; font-weight: 500; }
+.badge .lbl { font-size: 13px; color: #b9c7cf; }
+.hint { padding: 8px 14px; font-size: 13px; color: var(--fg-dim); border-top: 1px solid var(--line); min-height: 36px; }
+.hint.warn { color: var(--warn); }
+.busy, .empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
+.busy { background: rgba(8,11,13,.62); color: #eaf2f5; pointer-events: none; }
+.busy .box { display: grid; gap: 10px; justify-items: center; }
+.spin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255,255,255,.2); border-top-color: var(--ov-cell); animation: rot .8s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.empty .in { max-width: 460px; display: grid; gap: 14px; justify-items: center; color: #dfe8ec; }
+.empty h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; text-wrap: balance; }
+.empty p { margin: 0; color: #a9b9c2; }
+.empty ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; text-align: left; color: #c5d2d9; }
+.empty li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: baseline; }
+.empty li i { font-style: normal; font-family: var(--font-data); color: var(--ov-cell); }
+
+/* panel */
+.panel { overflow: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; }
+.sec { padding: 14px; display: grid; gap: 12px; }
+.sec + .sec { border-top: 1px solid var(--line); }
+.count-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.count-row .big { font-size: 46px; line-height: 1; font-weight: 500; }
+.count-row .sub { font-size: 12px; color: var(--fg-dim); text-align: right; }
+.sq { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.sq div { aspect-ratio: 1 / .5; display: grid; place-items: center; border-radius: 6px; background: color-mix(in srgb, var(--accent) calc(var(--i, 0) * 42%), var(--surface-2)); border: 1px solid var(--line); font-size: 15px; }
+.edits { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--fg-dim); }
+.edits .row2 .btn { flex: none; }
+.edits b { color: var(--fg); font-weight: 500; }
+.field { display: grid; gap: 6px; }
+.field label, .field .lab { font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline; }
+.field .hint2 { font-size: 12px; color: var(--fg-dim); line-height: 1.4; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 32px; margin: 0; }
+.ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-dim); margin-top: -4px; }
+input[type="number"] { width: 110px; min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); text-align: right; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.tbl td:last-child { text-align: right; }
+.tbl td:first-child { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; padding-right: 10px; }
+.tbl tr.sum td { border-bottom: 0; font-weight: 600; padding-top: 10px; }
+.conc { display: grid; gap: 2px; padding: 12px; border-radius: 10px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.conc .v { font-size: 24px; font-weight: 500; color: var(--accent); }
+.conc .l { font-size: 12px; color: var(--fg-dim); }
+.row2 { display: flex; gap: 8px; flex-wrap: wrap; }
+.row2 .btn { flex: 1 1 130px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 500; max-width: min(92vw, 520px); z-index: 20; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+
+/* narrower screens: portrait iPad and phones */
+@media (max-width: 1060px) {
+  html, body { height: auto; }
+  body { overflow: visible; }
+  .app { height: auto; }
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(60vh, 1fr) auto; }
+  .rail { flex-direction: row; align-items: stretch; }
+  .rail-head { flex-direction: column; justify-content: center; padding: 8px 10px; }
+  .photos { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 8px 8px 8px 0; }
+  .ph { width: 112px; flex: none; align-content: start; }
+  .rail-empty { align-self: center; }
+  .viewport { min-height: 52vh; }
+  .panel { overflow: visible; }
+}
+@media (min-width: 700px) and (max-width: 1060px) {
+  .panel { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+  .panel .sec + .sec { border-top: 0; border-left: 1px solid var(--line); }
+  .panel .sec:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); grid-template-columns: 1fr 1fr; align-items: start; column-gap: 24px; }
+  .panel .sec:nth-child(3) h2 { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .brand span { display: none; }
+  .btn { padding: 0 12px; }
+  .badge .big { font-size: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .spin, .dot.busy { animation: none; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" role="img" aria-label="Neubauer grid with cells">
+        <rect x="1" y="1" width="28" height="28" rx="7" fill="#10171b" stroke="#3a4a54"/>
+        <path d="M10.3 5v20M19.7 5v20M5 10.3h20M5 19.7h20" stroke="#6f838f" stroke-width="1"/>
+        <circle cx="14.9" cy="14.8" r="3.3" fill="#ffd23f" stroke="#10171b" stroke-width="1.4"/>
+        <circle cx="22.2" cy="8.1" r="2.5" fill="#ffd23f" stroke="#10171b" stroke-width="1.2"/>
+        <circle cx="8.3" cy="22.3" r="2.5" fill="#ffd23f" stroke="#10171b" stroke-width="1.2"/>
+      </svg>
+      <b>Neubauer Counter</b><span>Automatic cell counts for hemocytometer photos</span>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnAdd" type="button">Add photos</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="card rail" aria-label="Photos">
+      <div class="rail-head"><h2>Photos</h2><button class="btn small" id="btnAdd2" type="button">Add</button></div>
+      <ul class="photos" id="photoList"></ul>
+      <p class="rail-empty" id="railEmpty">Add one photo for each corner square you count.</p>
+    </aside>
+
+    <section class="card stage" aria-label="Viewer">
+      <div class="stage-bar" id="stageBar">
+        <div class="seg" role="group" aria-label="Zoom">
+          <button class="btn small" id="zFit" type="button" title="Zoom to the counting grid">Fit grid</button>
+          <button class="btn small" id="zAll" type="button" title="Show the whole photo">Whole photo</button>
+          <button class="btn small" id="zOut" type="button" aria-label="Zoom out">&minus;</button>
+          <button class="btn small" id="zIn" type="button" aria-label="Zoom in">+</button>
+        </div>
+        <div class="sp"></div>
+        <button class="btn small" id="tCells" type="button" aria-pressed="true">Cells</button>
+        <button class="btn small" id="tSq" type="button" aria-pressed="false">Square counts</button>
+        <button class="btn small" id="tGridReset" type="button" hidden>Reset grid</button>
+        <button class="btn small" id="tAdjust" type="button" aria-pressed="false">Edit grid</button>
+      </div>
+      <div class="viewport" id="viewport">
+        <canvas id="cv" aria-label="Photo with detected cells. Tap a cell to remove it, tap empty space to add one."></canvas>
+        <div class="badge" id="badge" hidden><span class="big num" id="badgeN">0</span><span class="lbl">cells in the grid</span></div>
+        <div class="busy" id="busy" hidden><div class="box"><div class="spin"></div><div id="busyTxt">Analysing</div></div></div>
+        <div class="empty" id="empty">
+          <div class="in">
+            <h1>Count the cells in a hemocytometer photo</h1>
+            <ol>
+              <li><i>1</i><span>Add a photo of one corner square. It holds 16 small squares.</span></li>
+              <li><i>2</i><span>The grid and the cells are found automatically.</span></li>
+              <li><i>3</i><span>Tap a cell to remove it. Tap empty space to add one.</span></li>
+            </ol>
+            <button class="btn primary" id="btnAdd3" type="button">Add photos</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </section>
+
+    <aside class="card panel" aria-label="Results">
+      <div class="sec" id="secPhoto">
+        <h2>This photo</h2>
+        <div class="count-row"><div class="big num" id="pCount">&ndash;</div><div class="sub" id="pSub">No photo yet</div></div>
+        <div class="sq" id="pSq" aria-label="Cells in each of the 16 squares"></div>
+        <div class="edits"><span id="pEdits">Auto 0 &middot; added 0 &middot; removed 0</span><span class="row2" style="flex:none"><button class="btn small" id="btnReset" type="button">Reset edits</button><button class="btn small" id="btnRemove" type="button">Remove photo</button></span></div>
+      </div>
+      <div class="sec">
+        <h2>Session</h2>
+        <table class="tbl" id="sessTbl"><tbody></tbody></table>
+        <div class="field" style="grid-template-columns:1fr auto;align-items:center">
+          <label for="dil">Dilution factor</label>
+          <input type="number" id="dil" inputmode="decimal" min="0" step="any" value="1">
+        </div>
+        <div class="conc"><div class="v num" id="concV">&ndash;</div><div class="l" id="concL">Add photos to see the concentration</div></div>
+        <div class="row2">
+          <button class="btn" id="btnCopy" type="button">Copy results</button>
+          <button class="btn" id="btnCsv" type="button">Save CSV</button>
+        </div>
+      </div>
+      <div class="sec">
+        <h2>Counting rules</h2>
+        <div class="field">
+          <label for="sens"><span>Sensitivity</span><span class="num" id="sensV">50</span></label>
+          <input type="range" id="sens" min="0" max="100" step="1" value="50">
+          <div class="ends"><span>Fewer cells</span><span>More cells</span></div>
+        </div>
+        <div class="field">
+          <div class="lab">Cells on the grid lines</div>
+          <div class="seg" role="group" aria-label="Border rule" style="display:flex">
+            <button class="btn small" type="button" data-rule="inside" aria-pressed="true" style="flex:1">Inside</button>
+            <button class="btn small" type="button" data-rule="topleft" aria-pressed="false" style="flex:1">Top + left</button>
+            <button class="btn small" type="button" data-rule="touching" aria-pressed="false" style="flex:1">All touching</button>
+          </div>
+          <div class="hint2" id="ruleHint"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+  <div class="toast" id="toast" role="status" hidden></div>
+</div>
+
+<script id="engine-main">
+/* engine.js – Neubauer-chamber cell counting engine (pure functions; runs in a Web Worker or on the main thread).
+ *
+ * Pipeline
+ *   1. prepare()      box-downscale the photo by an integer factor and build a "darkness" map that keeps thin outlines
+ *   2. findBlock()    locate the 4x4 counting block (a corner square of the chamber) from the ruled grid lines
+ *   3. findCells()    cell candidates = bright blobs surrounded by a closed dark outline, scored by a logistic model
+ *
+ * All coordinates returned by analyze() are in FULL-RESOLUTION image pixels.
+ */
+(function (root) {
+  'use strict';
+
+  // ------------------------------------------------------------------ small helpers
+  function median(a) { if (!a.length) return 0; const b = Array.from(a).sort((x, y) => x - y); return b[b.length >> 1]; }
+
+  /** Rolling max of array a over window [i, i+len-1]. */
+  function rollMax(a, len) {
+    const n = a.length, out = new Float32Array(n), dq = new Int32Array(n);
+    let head = 0, tail = 0;
+    for (let i = n - 1; i >= 0; i--) {
+      while (tail > head && a[dq[tail - 1]] <= a[i]) tail--;
+      dq[tail++] = i;
+      while (dq[head] > i + len - 1) head++;
+      out[i] = a[dq[head]];
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ 1. preparation
+  /**
+   * Box-downscale full-res RGBA by integer factor f. Also builds dk = darkest min(R,G) of every f*f block so that thin
+   * dark cell outlines survive downscaling (min(R,G): yellow cell cores have low blue but are not dark).
+   */
+  function prepare(rgba, W, H, f) {
+    const w = Math.floor(W / f), h = Math.floor(H / f);
+    const data = new Uint8ClampedArray(w * h * 4), dk = new Uint8Array(w * h);
+    const n = f * f;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0, d = 255;
+      for (let dy = 0; dy < f; dy++) {
+        let o = ((y * f + dy) * W + x * f) * 4;
+        for (let dx = 0; dx < f; dx++, o += 4) {
+          const R = rgba[o], G = rgba[o + 1]; r += R; g += G; b += rgba[o + 2];
+          const m = R < G ? R : G; if (m < d) d = m;
+        }
+      }
+      const i = y * w + x, o2 = i * 4;
+      data[o2] = r / n; data[o2 + 1] = g / n; data[o2 + 2] = b / n; data[o2 + 3] = 255; dk[i] = d;
+    }
+    return { w, h, data, dk, f };
+  }
+
+  /** Per-row [xl,xr] extents of the lit disc (the round microscope field of view). */
+  function discExtents(rgba, w, h) {
+    const xl = new Int16Array(h), xr = new Int16Array(h);
+    for (let y = 0; y < h; y++) {
+      let l = -1, r = -1;
+      for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (rgba[o] + rgba[o + 1] + rgba[o + 2] > 90) { l = x; break; } }
+      for (let x = w - 1; x >= 0; x--) { const o = (y * w + x) * 4; if (rgba[o] + rgba[o + 1] + rgba[o + 2] > 90) { r = x; break; } }
+      xl[y] = l; xr[y] = r;
+    }
+    return { xl, xr };
+  }
+
+  /** Brightness statistics inside the disc: b0 = background level (median), hi = highlight level (99.5th percentile). */
+  function imageStats(P, ext) {
+    const hist = new Float64Array(256); let n = 0;
+    const { w, h, data } = P;
+    for (let y = 0; y < h; y += 2) {
+      const l = ext.xl[y], r = ext.xr[y]; if (l < 0 || r < 0) continue;
+      for (let x = l + 8; x < r - 8; x += 2) { const o = (y * w + x) * 4; const v = data[o] < data[o + 1] ? data[o] : data[o + 1]; hist[v | 0]++; n++; }
+    }
+    const pct = f => { let c = 0; for (let v = 0; v < 256; v++) { c += hist[v]; if (c >= f * n) return v; } return 255; };
+    const b0 = pct(0.5), hi = Math.max(pct(0.995), b0 + 60);
+    return { b0, hi };
+  }
+
+  // ------------------------------------------------------------------ 2. grid / counting block
+  // Line thresholds are set from each photo's own brightness (background b0, highlights hi), see gridParams().
+  const GRID = { ridgeD: 7, minRun: 70, runGap: 2 };
+  function gridParams(st) {
+    const range = st.hi - st.b0;
+    return Object.assign({}, GRID, { ridgeT: 0.22 * range, ridgeMin: st.b0 + 0.18 * range });   // = 38 and 105 for a typical photo
+  }
+
+  function minChannel(rgba, w, h) {
+    const g = new Uint8Array(w * h);
+    for (let i = 0, o = 0; i < w * h; i++, o += 4) { const r = rgba[o], gg = rgba[o + 1], b = rgba[o + 2]; g[i] = r < gg ? (r < b ? r : b) : (gg < b ? gg : b); }
+    return g;
+  }
+
+  /** Thin bright ridges (grid lines are neutral white; yellow cells have low blue so they drop out), long runs only. */
+  function ridgeMap(g, w, h, dir, p) {
+    const d = p.ridgeD, T = p.ridgeT, L = p.minRun, gap = p.runGap;
+    const m = new Uint8Array(w * h), win = 2 * d + 1;
+    if (dir === 'v') {
+      for (let y = 0; y < h; y++) {
+        const r = y * w; let s = 0;
+        for (let x = 0; x < win && x < w; x++) s += g[r + x];
+        for (let x = d; x < w - d; x++) { const v = g[r + x]; if (v >= p.ridgeMin && v - s / win >= T) m[r + x] = 1; s += g[r + x + d + 1] - g[r + x - d]; }
+      }
+    } else {
+      for (let x = 0; x < w; x++) {
+        let s = 0;
+        for (let y = 0; y < win && y < h; y++) s += g[y * w + x];
+        for (let y = d; y < h - d; y++) { const v = g[y * w + x]; if (v >= p.ridgeMin && v - s / win >= T) m[y * w + x] = 1; s += g[(y + d + 1) * w + x] - g[(y - d) * w + x]; }
+      }
+    }
+    const wide = new Uint8Array(w * h);
+    if (dir === 'v') { for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (m[i - 1] | m[i] | m[i + 1]) wide[i] = 1; } }
+    else { for (let y = 1; y < h - 1; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (m[i - w] | m[i] | m[i + w]) wide[i] = 1; } }
+    const out = new Uint8Array(w * h);
+    const major = dir === 'v' ? h : w, minor = dir === 'v' ? w : h;
+    const stride = dir === 'v' ? w : 1, mstride = dir === 'v' ? 1 : w;
+    for (let a = 0; a < minor; a++) {
+      let start = -1, last = -1;
+      const flush = () => { if (start >= 0 && last - start + 1 >= L) for (let t = start; t <= last; t++) { const i = t * stride + a * mstride; if (m[i]) out[i] = 1; } };
+      for (let t = 0; t < major; t++) {
+        if (wide[t * stride + a * mstride]) { if (start < 0) start = t; else if (t - last > gap + 1) { flush(); start = t; } last = t; }
+      }
+      flush();
+    }
+    return out;
+  }
+
+  /** Projection-sharpness score for each tilt angle (degrees). */
+  function angleScores(ridge, w, h, dir, rangeDeg, stepDeg) {
+    const pts = [];
+    for (let i = 0; i < ridge.length; i++) if (ridge[i]) pts.push(i);
+    const sub = pts.length > 60000 ? Math.ceil(pts.length / 60000) : 1;
+    const scores = [];
+    const size = Math.ceil(Math.hypot(w, h)) + 4;
+    for (let da = -rangeDeg; da <= rangeDeg + 1e-9; da += stepDeg) {
+      const th = da * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+      const bins = new Float32Array(size);
+      for (let k = 0; k < pts.length; k += sub) {
+        const x = pts[k] % w, y = (pts[k] / w) | 0;
+        const u = dir === 'v' ? x * c + y * s : y * c - x * s;
+        bins[Math.round(u) + 2 + (dir === 'v' ? 0 : w)] += 1;
+      }
+      let sc = 0; for (let b = 0; b < size; b++) { const v = bins[b] + (b > 0 ? bins[b - 1] : 0) + (b < size - 1 ? bins[b + 1] : 0); sc += v * v; }
+      scores.push([da, sc]);
+    }
+    return scores;
+  }
+
+  /** Project ridge pixels on the tilted axis; also the visible chord length at each position. */
+  function lineProfile(ridge, w, h, dir, deg, ext) {
+    const th = deg * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+    const off = dir === 'v' ? Math.ceil(h * Math.abs(s)) + 4 : Math.ceil(w * Math.abs(s)) + 4;
+    const n = (dir === 'v' ? w : h) + 2 * off;
+    const cnt = new Float32Array(n), chord = new Float32Array(n);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!ridge[y * w + x]) continue;
+      cnt[Math.round(dir === 'v' ? x * c + y * s : y * c - x * s) + off] += 1;
+    }
+    for (let y = 0; y < h; y++) {
+      const l = ext.xl[y], r = ext.xr[y]; if (l < 0 || r < 0) continue;
+      for (let x = l; x <= r; x++) chord[Math.round(dir === 'v' ? x * c + y * s : y * c - x * s) + off] += 1;
+    }
+    return { cnt, chord, off };
+  }
+
+  /** Normalised line coverage s[i] (fraction of the visible chord covered), with peak-hold variants. */
+  function coverage(P) {
+    const { cnt, chord, off } = P, n = cnt.length;
+    const s = new Float32Array(n), pk = new Float32Array(n), pk2 = new Float32Array(n);
+    for (let i = 1; i < n - 1; i++) { const c = chord[i]; if (c >= 40) s[i] = (cnt[i - 1] + cnt[i] + cnt[i + 1]) / (c * 3); }
+    for (let i = 1; i < n - 1; i++) pk[i] = Math.max(s[i - 1], s[i], s[i + 1]);
+    for (let i = 2; i < n - 2; i++) pk2[i] = Math.max(s[i - 2], s[i - 1], s[i], s[i + 1], s[i + 2]);
+    return { s, pk, pk2, off, n };
+  }
+
+  /**
+   * Best 5-line lattice (4 equal squares) of spacing S for every S: five line strengths (one boundary line may be faint),
+   * empty gaps between lines, finely ruled neighbour (lines at multiples of S/5) beyond one side, mildly centred.
+   */
+  function latticeScores(cov, Smin, Smax, centerIdx) {
+    const { pk, pk2, n } = cov;
+    const best = new Float32Array(Smax + 1).fill(-1e9), arg = new Int32Array(Smax + 1);
+    const cap = 0.55;
+    for (let S = Smin; S <= Smax; S++) {
+      const rm = rollMax(pk, Math.max(3, S - 14)), step = S / 5;
+      for (let x0 = 2; x0 + 4 * S < n - 2; x0++) {
+        let sum = 0, m1 = 9, m2 = 9, gap = 0;
+        for (let k = 0; k < 5; k++) { const v = pk[x0 + k * S]; sum += v < cap ? v : cap; if (v < m1) { m2 = m1; m1 = v; } else if (v < m2) m2 = v; }
+        if (m2 < 0.08) continue;
+        for (let k = 0; k < 4; k++) gap += rm[x0 + k * S + 7];
+        let lo = 0, hi = 0;
+        for (let j = 1; j <= 4; j++) {
+          const a = Math.round(x0 - j * step), b = Math.round(x0 + 4 * S + j * step);
+          if (a >= 2) lo += pk2[a]; if (b < n - 2) hi += pk2[b];
+        }
+        const sc = sum - gap + 2.0 * Math.min(m2, 0.3) + 1.5 * (Math.max(lo, hi) / 4) - 0.4 * (Math.abs(x0 + 2 * S - centerIdx) / S);
+        if (sc > best[S]) { best[S] = sc; arg[S] = x0; }
+      }
+    }
+    return { best, arg };
+  }
+
+  function refineLattice(cov, x0, S) {
+    const { s } = cov; const ks = [], ps = [];
+    for (let k = 0; k < 5; k++) {
+      const c = Math.round(x0 + k * S); let b = c, bv = -1;
+      for (let d = -4; d <= 4; d++) { const v = s[c + d] || 0; if (v > bv) { bv = v; b = c + d; } }
+      if (bv >= 0.12) { ks.push(k); ps.push(b); }
+    }
+    if (ks.length < 3) return { x0, S };
+    let sk = 0, sp = 0, skk = 0, skp = 0; const n = ks.length;
+    for (let i = 0; i < n; i++) { sk += ks[i]; sp += ps[i]; skk += ks[i] * ks[i]; skp += ks[i] * ps[i]; }
+    const S2 = (n * skp - sk * sp) / (n * skk - sk * sk);
+    return { x0: (sp - S2 * sk) / n, S: S2 };
+  }
+
+  /**
+   * Find the 4x4 counting block in the work image P. Returns null if no convincing lattice is found, else
+   * {theta, u0, v0, Su, Sv, S, score} with the grid frame rotated by theta:  u = x cos + y sin,  v = -x sin + y cos.
+   */
+  function findBlock(P, ext, st) {
+    const { w, h, data } = P;
+    const g = minChannel(data, w, h), gp = gridParams(st || imageStats(P, ext));
+    const rv = ridgeMap(g, w, h, 'v', gp), rh = ridgeMap(g, w, h, 'h', gp);
+    const sv = angleScores(rv, w, h, 'v', 3, 0.1), sh = angleScores(rh, w, h, 'h', 3, 0.1);
+    const mv = Math.max(...sv.map(s => s[1])) || 1, mh = Math.max(...sh.map(s => s[1])) || 1;
+    let deg = 0, bs = -1;
+    for (let i = 0; i < sv.length; i++) { const sc = sv[i][1] / mv + sh[i][1] / mh; if (sc > bs) { bs = sc; deg = sv[i][0]; } }
+    const cx = coverage(lineProfile(rv, w, h, 'v', deg, ext)), cy = coverage(lineProfile(rh, w, h, 'h', deg, ext));
+    const Smin = Math.round(Math.min(w, h) * 0.04), Smax = Math.round(Math.min(w, h) * 0.24);
+    let sx = 0, sy = 0, sn = 0;
+    for (let y = 0; y < h; y++) if (ext.xl[y] >= 0 && ext.xr[y] >= 0) { sx += (ext.xl[y] + ext.xr[y]) / 2; sy += y; sn++; }
+    const th = deg * Math.PI / 180, tc = Math.cos(th), ts = Math.sin(th), dcx = sx / sn, dcy = sy / sn;
+    const lx = latticeScores(cx, Smin, Smax, dcx * tc + dcy * ts + cx.off);
+    const ly = latticeScores(cy, Smin, Smax, -dcx * ts + dcy * tc + cy.off);
+    let top = -1e9; const tot = [];
+    for (let S = Smin; S <= Smax; S++) { const t = lx.best[S] + ly.best[S]; tot.push([S, t]); if (t > top) top = t; }
+    if (top < 2.5) return null;                       // nothing grid-like found
+    let chosen = null;
+    for (const [S, t] of tot) if (t >= 0.82 * top) chosen = S;   // finest centre-grid also scores well: prefer the largest S
+    let bestS = chosen, bt = -1e9;
+    for (const [S, t] of tot) if (Math.abs(S - chosen) <= 3 && t > bt) { bt = t; bestS = S; }
+    const rx = refineLattice(cx, lx.arg[bestS], bestS), ry = refineLattice(cy, ly.arg[bestS], bestS);
+    return { theta: th, thetaDeg: deg, u0: rx.x0 - cx.off, Su: rx.S, v0: ry.x0 - cy.off, Sv: ry.S, S: bestS, score: bt };
+  }
+
+  // ------------------------------------------------------------------ 3. cells
+  // Logistic model (10 features) trained on hand-annotated Neubauer photos; see tools/ for the training harness.
+  const MODEL = {
+    feats: ['closure', 'rMean', 'rSd', 'inner', 'darkFrac', 'sd', 'nbr', 'yel', 'halo', 'ringDark'],
+    mean: [0.9402, 4.5125, 1.142, 0.6769, 0.352, 0.3821, 2.2382, 0.1783, 0.2034, 0.2789],
+    sd: [0.1062, 0.7396, 0.5073, 0.2994, 0.1668, 0.0634, 2.5862, 0.3106, 0.1568, 0.2064],
+    w: [0.0199, 0.0684, -0.3795, 0.212, -0.8542, 0.1889, -0.9371, 0.2908, 0.4708, -0.7291],
+    b: -0.7689,
+  };
+
+  /**
+   * Cell candidates in the work image. k = S / 143.5 rescales all pixel-size parameters (tuned for S = 143.5 px).
+   * Each candidate: {x, y, p (cell probability), rMean, ...features}
+   */
+  function findCells(P, ext, st, k) {
+    const { w, h, data, dk } = P, n = w * h;
+    const range = st.hi - st.b0;
+    const seedBr = st.b0 + 0.28 * range, dark = 0.78 * st.b0;
+    const br = new Float32Array(n), yl = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; br[i] = r < g ? r : g; yl[i] = br[i] - b; }
+    const II = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += br[y * w + x]; II[(y + 1) * (w + 1) + x + 1] = II[y * (w + 1) + x + 1] + row; } }
+    const box = (x, y, r) => { const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(w, x + r + 1), y1 = Math.min(h, y + r + 1);
+      return (II[y1 * (w + 1) + x1] - II[y0 * (w + 1) + x1] - II[y1 * (w + 1) + x0] + II[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0)); };
+    const rb = Math.max(1, Math.round(2 * k)), sw = Math.max(2, Math.round(3 * k));
+    const r0 = 2.5 * k, r1 = 9 * k, margin = Math.ceil(r1) + 3;
+    const bm = new Float32Array(n);
+    for (let y = rb; y < h - rb; y++) for (let x = rb; x < w - rb; x++) bm[y * w + x] = box(x, y, rb);
+    const seeds = [];
+    for (let y = margin; y < h - margin; y++) {
+      const l = ext.xl[y], r = ext.xr[y]; if (l < 0 || r < 0) continue;
+      for (let x = Math.max(margin, l); x < Math.min(w - margin, r); x++) {
+        const v = bm[y * w + x]; if (v < seedBr) continue;
+        let ok = true;
+        for (let dy = -sw; dy <= sw && ok; dy++) for (let dx = -sw; dx <= sw; dx++) if (bm[(y + dy) * w + x + dx] > v) { ok = false; break; }
+        if (ok) seeds.push([x, y]);
+      }
+    }
+    const NR = 24, cs = [], sn = [];
+    for (let a = 0; a < NR; a++) { cs.push(Math.cos(2 * Math.PI * a / NR)); sn.push(Math.sin(2 * Math.PI * a / NR)); }
+    const evalAt = (cx, cy) => {
+      let closed = 0, sumMin = 0; const radii = [];
+      for (let a = 0; a < NR; a++) {
+        let m = 255, mr = 0;
+        for (let r = r0; r <= r1; r += 0.5) { const v = dk[Math.round(cy + r * sn[a]) * w + Math.round(cx + r * cs[a])]; if (v < m) { m = v; mr = r; } }
+        sumMin += m; if (m <= dark) { closed++; radii.push(mr); }
+      }
+      let mean = 0; for (const r of radii) mean += r; mean = radii.length ? mean / radii.length : 0;
+      let sd = 0; for (const r of radii) sd += (r - mean) ** 2; sd = radii.length ? Math.sqrt(sd / radii.length) : 3 * k;
+      return { closure: closed / NR, rMean: mean / k, rSd: sd / k, ringDark: sumMin / NR / st.b0 };
+    };
+    let cand = [];
+    for (const [x, y] of seeds) {
+      let best = null;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const e = evalAt(x + dx, y + dy), sc = e.closure - 0.05 * e.rSd;
+        if (!best || sc > best.sc) best = Object.assign({ sc, x: x + dx, y: y + dy }, e);
+      }
+      if (best.closure < 0.6 || best.rSd > 2.5 || best.rMean < 2.5 || best.rMean > 8.5) continue;
+      best.inner = (box(best.x, best.y, Math.max(1, Math.round(k))) - st.b0) / range;
+      cand.push(best);
+    }
+    cand.sort((a, b) => b.closure - a.closure || a.rSd - b.rSd);
+    const kept = [], nms = 6 * k;
+    for (const c of cand) if (!kept.some(q => Math.hypot(q.x - c.x, q.y - c.y) < nms)) kept.push(c);
+    const R10 = Math.round(10 * k);
+    for (const c of kept) {
+      let dkc = 0, tot = 0, s = 0, s2 = 0, yy = 0, ny = 0, halo = 0, nh = 0;
+      for (let dy = -R10; dy <= R10; dy++) for (let dx = -R10; dx <= R10; dx++) {
+        const d2 = (dx * dx + dy * dy) / (k * k); if (d2 > 100) continue;
+        const x = c.x + dx, y = c.y + dy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const i = y * w + x; tot++; if (dk[i] <= dark) dkc++; s += br[i]; s2 += br[i] * br[i];
+        if (d2 <= 9) { yy += yl[i]; ny++; }
+        if (d2 >= 49 && d2 <= 81) { halo += br[i]; nh++; }
+      }
+      c.darkFrac = dkc / tot;
+      const m = s / tot; c.sd = Math.sqrt(Math.max(0, s2 / tot - m * m)) / range;
+      c.yel = (ny ? yy / ny : 0) / range; c.halo = ((nh ? halo / nh : st.b0) - st.b0) / range;
+      let nb = 0; for (const q of kept) if (q !== c && Math.hypot(q.x - c.x, q.y - c.y) < 24 * k) nb++;
+      c.nbr = nb;
+    }
+    for (const c of kept) {
+      let z = MODEL.b;
+      for (let j = 0; j < MODEL.feats.length; j++) z += MODEL.w[j] * (c[MODEL.feats[j]] - MODEL.mean[j]) / MODEL.sd[j];
+      c.p = 1 / (1 + Math.exp(-z));
+    }
+    return kept;
+  }
+
+  // ------------------------------------------------------------------ orchestration
+  /**
+   * analyze({data,w,h}) -> { f, work:{w,h}, block|null, cells:[{x,y,p,r}], stats }   (x,y,r in full-res pixels)
+   * progress(label, fraction) is optional.
+   */
+  function analyze(full, progress) {
+    const tell = (s, f) => { if (progress) progress(s, f); };
+    const t0 = Date.now();
+    tell('Preparing image', 0.05);
+    // pick the downscale so that the grid spacing lands near 143 work px (first guess: ~2000 px wide work image)
+    let f = Math.max(1, Math.round(full.w / 2016));
+    let P = prepare(full.data, full.w, full.h, f);
+    let ext = discExtents(P.data, P.w, P.h), st = imageStats(P, ext);
+    tell('Finding the counting grid', 0.3);
+    let block = findBlock(P, ext, st);
+    if (block) {
+      const Sfull = block.S * f, f2 = Math.max(1, Math.round(Sfull / 143.5));   // aim for ~143 work px per grid square
+      if (f2 !== f) {                                   // different magnification: redo at the matching scale
+        f = f2; P = prepare(full.data, full.w, full.h, f); ext = discExtents(P.data, P.w, P.h); st = imageStats(P, ext);
+        block = findBlock(P, ext, st);
+      }
+    }
+    const k = block ? Math.min(2, Math.max(0.5, block.S / 143.5)) : 1;
+    tell('Detecting cells', 0.6);
+    const cells = findCells(P, ext, st, k).map(c => ({
+      x: (c.x + 0.5) * f, y: (c.y + 0.5) * f, p: c.p, r: Math.max(5, (c.rMean + 1.2) * k) * f,
+    }));
+    tell('Done', 1);
+    return {
+      f, work: { w: P.w, h: P.h }, stats: st, k, ms: Date.now() - t0,
+      block: block ? {
+        theta: block.theta, u0: block.u0 * f, v0: block.v0 * f, Su: block.Su * f, Sv: block.Sv * f, score: block.score,
+        corners: blockCorners(block, f),
+      } : null,
+      cells,
+    };
+  }
+
+  /** Corners (TL,TR,BR,BL) of the block in full-res px. */
+  function blockCorners(B, f) {
+    const c = Math.cos(B.theta), s = Math.sin(B.theta);
+    const to = (u, v) => ({ x: (u * c - v * s) * f, y: (u * s + v * c) * f });
+    return [to(B.u0, B.v0), to(B.u0 + 4 * B.Su, B.v0), to(B.u0 + 4 * B.Su, B.v0 + 4 * B.Sv), to(B.u0, B.v0 + 4 * B.Sv)];
+  }
+
+  // ------------------------------------------------------------------ geometry for the UI
+  /** Homography mapping unit square -> quad (TL,TR,BR,BL) and its inverse (Heckbert). */
+  function quadHomography(q) {
+    const [p0, p1, p2, p3] = q;
+    const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x, dx3 = p0.x - p1.x + p2.x - p3.x;
+    const dy1 = p1.y - p2.y, dy2 = p3.y - p2.y, dy3 = p0.y - p1.y + p2.y - p3.y;
+    let a, b, c, d, e, f, g, hh;
+    if (Math.abs(dx3) < 1e-9 && Math.abs(dy3) < 1e-9) { a = p1.x - p0.x; b = p2.x - p1.x; c = p0.x; d = p1.y - p0.y; e = p2.y - p1.y; f = p0.y; g = 0; hh = 0; }
+    else {
+      const den = dx1 * dy2 - dx2 * dy1;
+      g = (dx3 * dy2 - dx2 * dy3) / den; hh = (dx1 * dy3 - dx3 * dy1) / den;
+      a = p1.x - p0.x + g * p1.x; b = p3.x - p0.x + hh * p3.x; c = p0.x;
+      d = p1.y - p0.y + g * p1.y; e = p3.y - p0.y + hh * p3.y; f = p0.y;
+    }
+    // forward: (s,t)->(x,y) with  x=(a s + b t + c)/(g s + hh t + 1); matrix M=[[a,b,c],[d,e,f],[g,hh,1]]
+    const M = [a, b, c, d, e, f, g, hh, 1];
+    const det = M[0] * (M[4] * M[8] - M[5] * M[7]) - M[1] * (M[3] * M[8] - M[5] * M[6]) + M[2] * (M[3] * M[7] - M[4] * M[6]);
+    const inv = [
+      (M[4] * M[8] - M[5] * M[7]) / det, (M[2] * M[7] - M[1] * M[8]) / det, (M[1] * M[5] - M[2] * M[4]) / det,
+      (M[5] * M[6] - M[3] * M[8]) / det, (M[0] * M[8] - M[2] * M[6]) / det, (M[2] * M[3] - M[0] * M[5]) / det,
+      (M[3] * M[7] - M[4] * M[6]) / det, (M[1] * M[6] - M[0] * M[7]) / det, (M[0] * M[4] - M[1] * M[3]) / det,
+    ];
+    return { M, inv };
+  }
+  /** (x,y) in image -> (s,t) in the block's unit square (0..1 inside). */
+  function locate(H, x, y) {
+    const m = H.inv, w = m[6] * x + m[7] * y + m[8];
+    return { s: (m[0] * x + m[1] * y + m[2]) / w, t: (m[3] * x + m[4] * y + m[5]) / w };
+  }
+  /** (s,t) -> (x,y). */
+  function place(H, s, t) {
+    const m = H.M, w = m[6] * s + m[7] * t + m[8];
+    return { x: (m[0] * s + m[1] * t + m[2]) / w, y: (m[3] * s + m[4] * t + m[5]) / w };
+  }
+
+  root.CellEngine = { analyze, prepare, discExtents, imageStats, findBlock, findCells, blockCorners, quadHomography, locate, place, MODEL, median };
+})(typeof self !== 'undefined' ? self : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ }
+    },
+  };
+  const settings = Object.assign({ sens: 50, rule: 'inside', dilution: 1 }, store.get('neubauer-counter.settings', {}));
+  const ui = { cells: true, squares: false, adjust: false };
+  const RULES = {
+    inside: 'Counts a cell when its centre is inside the grid.',
+    topleft: 'Standard Neubauer rule: cells touching the top and left lines count, cells touching the bottom and right lines do not.',
+    touching: 'Counts every cell that touches the grid, on any side.',
+  };
+  const photos = []; let cur = null; let seq = 0;
+
+  // ---------------------------------------------------------------- engine worker (falls back to the main thread)
+  let worker = null, workerBroken = false; const waiting = new Map();
+  function startWorker() {
+    if (worker || workerBroken) return worker;
+    try {
+      const src = $('engine-main').textContent + `
+self.onmessage = function (e) { var d = e.data;
+  try { var res = CellEngine.analyze({ data: new Uint8ClampedArray(d.buf), w: d.w, h: d.h }, function (l, f) { self.postMessage({ id: d.id, progress: [l, f] }); });
+    self.postMessage({ id: d.id, result: res }); } catch (err) { self.postMessage({ id: d.id, error: String(err && err.message || err) }); } };`;
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = e => {
+        const m = e.data, w = waiting.get(m.id); if (!w) return;
+        if (m.progress) w.onProgress(m.progress[0]);
+        else { waiting.delete(m.id); m.error ? w.reject(new Error(m.error)) : w.resolve(m.result); }
+      };
+      worker.onerror = () => { workerBroken = true; worker = null; for (const [, w] of waiting) w.reject(new Error('worker')); waiting.clear(); };
+    } catch (e) { workerBroken = true; worker = null; }
+    return worker;
+  }
+  function runEngine(p, onProgress) {
+    const g = p.src.getContext('2d');
+    const img = g.getImageData(0, 0, p.W, p.H);
+    const w = startWorker();
+    if (w) {
+      return new Promise((resolve, reject) => {
+        waiting.set(p.id, { resolve, reject, onProgress });
+        w.postMessage({ id: p.id, buf: img.data.buffer, w: p.W, h: p.H }, [img.data.buffer]);
+      }).catch(err => { if (err.message === 'worker') return runEngine(p, onProgress); throw err; });
+    }
+    return new Promise((resolve, reject) => setTimeout(() => {
+      try { resolve(CellEngine.analyze({ data: img.data, w: p.W, h: p.H }, l => onProgress(l))); } catch (e) { reject(e); }
+    }, 30));
+  }
+
+  // ---------------------------------------------------------------- loading photos
+  const queue = []; let pumping = false;
+  function newPhoto(name) {
+    let base = name.replace(/\.[^.]+$/, '') || 'Photo', n = base, k = 2;
+    while (photos.some(p => p.name === n)) n = base + ' (' + (k++) + ')';
+    return { id: ++seq, name: n, W: 0, H: 0, src: null, thumb: '', status: 'queued', msg: 'Waiting', cells: [], quad: null, medR: 12, added: [], removed: new Set(), view: null, gridFound: true, ver: 0 };
+  }
+  async function loadCanvas(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('unreadable')); img.src = url; });
+      const w = img.naturalWidth, h = img.naturalHeight, MAX = 12.5e6, sc = w * h > MAX ? Math.sqrt(MAX / (w * h)) : 1;
+      const c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c;
+    } finally { URL.revokeObjectURL(url); }
+  }
+  /** Keep a display copy (max 3000 px wide) after analysis so several 12 MP photos do not exhaust iPad memory. */
+  function shrink(c, maxW) {
+    if (c.width <= maxW) return c;
+    const o = document.createElement('canvas'); o.width = maxW; o.height = Math.round(c.height * maxW / c.width);
+    const g = o.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, o.width, o.height);
+    c.width = c.height = 0; return o;
+  }
+  function makeThumb(c) {
+    const t = document.createElement('canvas'); t.width = 160; t.height = Math.round(160 * c.height / c.width);
+    t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    return t.toDataURL('image/jpeg', 0.7);
+  }
+  function addFiles(files) {
+    for (const f of files) {
+      if (!/^image\//.test(f.type) && !/\.(jpe?g|png|heic|heif|webp|bmp|tiff?)$/i.test(f.name)) continue;
+      const p = newPhoto(f.name || 'Photo'); photos.push(p); queue.push({ p, f });
+    }
+    if (!cur && photos.length) select(photos[0]);
+    renderAll(); pump();
+  }
+  async function pump() {
+    if (pumping) return; pumping = true;
+    while (queue.length) {
+      const { p, f } = queue.shift();
+      if (!photos.includes(p)) continue;
+      try {
+        p.status = 'busy'; p.msg = 'Reading photo'; renderAll();
+        p.src = await loadCanvas(f); p.W = p.src.width; p.H = p.src.height; p.thumb = makeThumb(p.src);
+        if (cur === p) fitView(p, false);
+        renderAll();
+        const res = await runEngine(p, label => { p.msg = label; if (cur === p) renderBusy(); });
+        applyResult(p, res);
+        p.src = shrink(p.src, 3000);
+      } catch (e) {
+        p.status = 'error'; p.msg = (e && e.message === 'worker') ? 'Analysis failed' : 'Could not read this photo';
+      }
+      if (cur === p) fitView(p, true);
+      renderAll();
+    }
+    pumping = false;
+  }
+  function applyResult(p, res) {
+    p.cells = res.cells.filter(c => c.p >= 0.12).map(c => ({ x: c.x, y: c.y, r: c.r, p: c.p }));
+    const good = p.cells.filter(c => c.p >= 0.5).map(c => c.r).sort((a, b) => a - b);
+    p.medR = good.length ? good[good.length >> 1] : 12;
+    if (res.block) { p.quad = res.block.corners.map(c => ({ x: c.x, y: c.y })); p.autoQuad = p.quad.map(q => ({ ...q })); p.gridFound = true; }
+    else {
+      const s = Math.min(p.W, p.H) * 0.45, cx = p.W / 2, cy = p.H / 2;
+      p.quad = [{ x: cx - s / 2, y: cy - s / 2 }, { x: cx + s / 2, y: cy - s / 2 }, { x: cx + s / 2, y: cy + s / 2 }, { x: cx - s / 2, y: cy + s / 2 }];
+      p.gridFound = false;
+    }
+    p.status = 'ready'; p.ver++;
+    if (cur === p && !p.gridFound) ui.adjust = true;
+  }
+
+  // ---------------------------------------------------------------- counting
+  const thr = () => 0.75 - 0.5 * (settings.sens / 100);
+  function quadH(p) { if (p._qk !== p.ver) { p._H = CellEngine.quadHomography(p.quad); p._qk = p.ver; } return p._H; }
+  function blockSize(p) {
+    const q = p.quad, d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    return (d(q[0], q[1]) + d(q[1], q[2]) + d(q[2], q[3]) + d(q[3], q[0])) / 4;
+  }
+  function inRange(loc, rho) {
+    let lo = 0, hi = 0;
+    if (settings.rule === 'topleft') { lo = rho; hi = -rho; } else if (settings.rule === 'touching') { lo = rho; hi = rho; }
+    return loc.s >= -lo && loc.s < 1 + hi && loc.t >= -lo && loc.t < 1 + hi;
+  }
+  function count(p) {
+    const key = p.ver + '|' + settings.sens + '|' + settings.rule;
+    if (p._ck === key) return p._c;
+    const t = thr(), H = quadH(p), rho = p.medR / blockSize(p);
+    const out = { counted: [], ghosts: [], outside: [], perSq: new Array(16).fill(0), total: 0, auto: 0, added: 0, removed: 0 };
+    const place = (c, kind, idx) => {
+      const loc = CellEngine.locate(H, c.x, c.y), inside = inRange(loc, rho);
+      return { c, kind, idx, loc, inside };
+    };
+    p.cells.forEach((c, i) => {
+      if (c.p < t) return;
+      const it = place(c, 'auto', i);
+      if (p.removed.has(i)) { out.ghosts.push(it); if (it.inside) out.removed++; return; }
+      if (it.inside) { out.counted.push(it); out.auto++; } else out.outside.push(it);
+    });
+    p.added.forEach((c, i) => { const it = place(c, 'manual', i); if (it.inside) { out.counted.push(it); out.added++; } else out.outside.push(it); });
+    for (const it of out.counted) {
+      const col = Math.min(3, Math.max(0, Math.floor(it.loc.s * 4))), row = Math.min(3, Math.max(0, Math.floor(it.loc.t * 4)));
+      out.perSq[row * 4 + col]++; out.total++;
+    }
+    p._ck = key; p._c = out; return out;
+  }
+
+  // ---------------------------------------------------------------- viewer
+  const cv = $('cv'), ctx = cv.getContext('2d'), vp = $('viewport');
+  let dpr = 1, raf = 0;
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function size() {
+    const r = vp.getBoundingClientRect(); dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    return r;
+  }
+  function fitView(p, toGrid) {
+    const r = vp.getBoundingClientRect(); if (!p.W || r.width < 10) return;
+    let x0 = 0, y0 = 0, x1 = p.W, y1 = p.H, pad = 0.02;
+    if (toGrid && p.quad) {
+      x0 = Math.min(...p.quad.map(q => q.x)); x1 = Math.max(...p.quad.map(q => q.x));
+      y0 = Math.min(...p.quad.map(q => q.y)); y1 = Math.max(...p.quad.map(q => q.y)); pad = 0.07;
+    }
+    const w = (x1 - x0) * (1 + 2 * pad), h = (y1 - y0) * (1 + 2 * pad), s = Math.min(r.width / w, r.height / h);
+    p.view = { s, tx: r.width / 2 - ((x0 + x1) / 2) * s, ty: r.height / 2 - ((y0 + y1) / 2) * s };
+    p.fitGrid = !!toGrid; p.userMoved = false;
+    schedule();
+  }
+  function zoomAt(p, f, sx, sy) {
+    const v = p.view; if (!v) return;
+    const s = Math.min(10, Math.max(0.03, v.s * f)), k = s / v.s;
+    v.tx = sx - (sx - v.tx) * k; v.ty = sy - (sy - v.ty) * k; v.s = s; p.userMoved = true; schedule();
+  }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(draw); };
+
+  function ring(x, y, r, color, w, dash) {
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832);
+    ctx.setLineDash(dash || []); ctx.lineWidth = w + 2; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke();
+    ctx.lineWidth = w; ctx.strokeStyle = color; ctx.stroke(); ctx.setLineDash([]);
+  }
+  function draw() {
+    raf = 0; size(); const p = cur;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    if (!p || !p.src || !p.view) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const { s, tx, ty } = p.view;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(p.src, tx, ty, p.W * s, p.H * s);
+    if (p.status !== 'ready' || !p.quad) return;
+    const c = count(p), H = quadH(p), P = (x, y) => [x * s + tx, y * s + ty];
+    const colCell = css('--ov-cell'), colMan = css('--ov-manual'), colRem = css('--ov-removed'), colGrid = css('--ov-grid');
+    // grid
+    ctx.lineWidth = 1.5; ctx.strokeStyle = colGrid; ctx.setLineDash([]);
+    for (let i = 0; i <= 4; i++) {
+      const a = CellEngine.place(H, i / 4, 0), b = CellEngine.place(H, i / 4, 1), d = CellEngine.place(H, 0, i / 4), e = CellEngine.place(H, 1, i / 4);
+      ctx.globalAlpha = (i === 0 || i === 4) ? 0.95 : 0.5;
+      ctx.beginPath(); ctx.moveTo(...P(a.x, a.y)); ctx.lineTo(...P(b.x, b.y)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(...P(d.x, d.y)); ctx.lineTo(...P(e.x, e.y)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (ui.cells) {
+      const rr = it => Math.max(5, it.c.r * s);
+      ctx.globalAlpha = 0.5;
+      for (const it of c.outside) { const [x, y] = P(it.c.x, it.c.y); ctx.beginPath(); ctx.arc(x, y, rr(it), 0, 6.2832); ctx.lineWidth = 1; ctx.strokeStyle = '#c9d3d9'; ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      for (const it of c.ghosts) { const [x, y] = P(it.c.x, it.c.y); ring(x, y, rr(it), colRem, 1.5, [4, 3]); }
+      for (const it of c.counted) { const [x, y] = P(it.c.x, it.c.y); ring(x, y, rr(it), it.kind === 'manual' ? colMan : colCell, 2); }
+    }
+    if (ui.squares) {
+      ctx.font = '500 15px ' + css('--font-data'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) {
+        const m = CellEngine.place(H, (q + 0.5) / 4, (r + 0.5) / 4), [x, y] = P(m.x, m.y), txt = String(c.perSq[r * 4 + q]), w = ctx.measureText(txt).width + 14;
+        ctx.fillStyle = 'rgba(8,11,13,.78)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - 12, w, 24, 8) : ctx.rect(x - w / 2, y - 12, w, 24); ctx.fill();
+        ctx.fillStyle = '#f2f7f9'; ctx.fillText(txt, x, y + 1);
+      }
+    }
+    if (ui.adjust) {
+      p.quad.forEach((q, i) => {
+        const [x, y] = P(q.x, q.y);
+        ctx.beginPath(); ctx.arc(x, y, 18, 0, 6.2832); ctx.fillStyle = 'rgba(8,11,13,.55)'; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = colMan; ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, 6.2832); ctx.fillStyle = colMan; ctx.fill();
+      });
+    }
+  }
+
+  // pointer gestures: one finger pans (or drags a grid corner), two fingers pinch, a short tap edits cells
+  const ptrs = new Map(); let g = null;
+  const local = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cv.addEventListener('pointerdown', e => {
+    if (!cur || !cur.view) return; cv.setPointerCapture(e.pointerId);
+    const pt = local(e); ptrs.set(e.pointerId, pt);
+    if (ptrs.size === 1) {
+      g = { mode: 'pan', start: pt, last: pt, t0: performance.now(), moved: false, corner: -1 };
+      if (ui.adjust && cur.quad) {
+        const v = cur.view; let best = 34;
+        cur.quad.forEach((q, i) => { const d = Math.hypot(q.x * v.s + v.tx - pt.x, q.y * v.s + v.ty - pt.y); if (d < best) { best = d; g.corner = i; } });
+        if (g.corner >= 0) g.mode = 'corner';
+      }
+    } else if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()], v = cur.view;
+      g = { mode: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, v0: { ...v }, moved: true };
+    }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId) || !g || !cur) return;
+    const pt = local(e); ptrs.set(e.pointerId, pt); const v = cur.view;
+    if (g.mode === 'pinch' && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const s = Math.min(10, Math.max(0.03, g.v0.s * d / g.d0)), ix = (g.m0.x - g.v0.tx) / g.v0.s, iy = (g.m0.y - g.v0.ty) / g.v0.s;
+      v.s = s; v.tx = m.x - ix * s; v.ty = m.y - iy * s; cur.userMoved = true; schedule(); return;
+    }
+    if (g.mode === 'corner') {
+      g.moved = true; cur.quad[g.corner] = { x: (pt.x - v.tx) / v.s, y: (pt.y - v.ty) / v.s }; cur.ver++; schedule(); renderPanel(); return;
+    }
+    if (g.mode === 'pan') {
+      if (!g.moved && Math.hypot(pt.x - g.start.x, pt.y - g.start.y) > 7) { g.moved = true; cv.classList.add('grab'); }
+      if (g.moved) { v.tx += pt.x - g.last.x; v.ty += pt.y - g.last.y; g.last = pt; cur.userMoved = true; schedule(); }
+    }
+  });
+  function endPtr(e) {
+    if (!ptrs.has(e.pointerId)) return; const pt = local(e); ptrs.delete(e.pointerId); cv.classList.remove('grab');
+    if (g && g.mode === 'pan' && !g.moved && ptrs.size === 0 && performance.now() - g.t0 < 600 && e.type === 'pointerup') tap(pt);
+    if (g && g.mode === 'corner') { cur.gridEdited = true; renderAll(); }
+    if (ptrs.size === 0) g = null; else if (g && g.mode === 'pinch') g = { mode: 'pan', start: pt, last: [...ptrs.values()][0], t0: 0, moved: true, corner: -1 };
+  }
+  cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+  cv.addEventListener('wheel', e => { if (!cur || !cur.view) return; e.preventDefault(); const pt = local(e); zoomAt(cur, Math.exp(-e.deltaY * 0.0018), pt.x, pt.y); }, { passive: false });
+
+  function tap(pt) {
+    const p = cur; if (!p || p.status !== 'ready' || ui.adjust) return;
+    const v = p.view, x = (pt.x - v.tx) / v.s, y = (pt.y - v.ty) / v.s, t = thr(), reach = Math.max(14 / v.s, 0);
+    let best = null, bd = 1e12;
+    const consider = (c, kind, idx) => { const d = Math.hypot(c.x - x, c.y - y); if (d < Math.max(c.r * 1.25, reach) && d < bd) { bd = d; best = { c, kind, idx }; } };
+    p.cells.forEach((c, i) => { if (c.p >= t) consider(c, 'auto', i); });
+    p.added.forEach((c, i) => consider(c, 'manual', i));
+    if (best) {
+      if (best.kind === 'manual') p.added.splice(best.idx, 1);
+      else if (p.removed.has(best.idx)) p.removed.delete(best.idx); else p.removed.add(best.idx);
+    } else if (x >= 0 && y >= 0 && x < p.W && y < p.H) p.added.push({ x, y, r: p.medR, p: 1 });
+    p.ver++; renderAll();
+  }
+
+  // ---------------------------------------------------------------- selection and rendering
+  function select(p) { cur = p; if (p && p.src && !p.view) fitView(p, p.status === 'ready'); ui.adjust = !!(p && p.status === 'ready' && !p.gridFound && !p.gridEdited); renderAll(); }
+  const fmt = n => Number(n).toLocaleString('en-US');
+  function stats() {
+    const ready = photos.filter(p => p.status === 'ready'), tot = ready.map(p => count(p).total);
+    const mean = ready.length ? tot.reduce((a, b) => a + b, 0) / ready.length : 0;
+    return { ready, tot, mean, conc: mean * 1e4 * (parseFloat(settings.dilution) || 0) };
+  }
+  function renderList() {
+    const ul = $('photoList'); ul.textContent = '';
+    $('railEmpty').hidden = photos.length > 0;
+    for (const p of photos) {
+      const li = document.createElement('li'), b = document.createElement('div');
+      b.className = 'ph'; b.tabIndex = 0; b.setAttribute('role', 'button'); b.setAttribute('aria-current', String(p === cur));
+      const th = document.createElement('div'); th.className = 'th'; if (p.thumb) th.style.backgroundImage = 'url(' + p.thumb + ')';
+      const chip = document.createElement('span'); chip.className = 'chip num';
+      if (p.status === 'ready') { chip.textContent = count(p).total; if (!p.gridFound && !p.gridEdited) { chip.classList.add('flag'); chip.title = 'Check the grid'; } }
+      else { const d = document.createElement('span'); d.className = 'dot' + (p.status === 'error' ? '' : ' busy'); chip.append(d); chip.title = p.msg; }
+      th.append(chip);
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
+      b.append(th, nm);
+      b.addEventListener('click', () => select(p));
+      b.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(p); } });
+      li.append(b); ul.append(li);
+    }
+  }
+  function removePhoto(p) {
+    const i = photos.indexOf(p); if (i < 0) return; photos.splice(i, 1);
+    if (cur === p) cur = photos[Math.min(i, photos.length - 1)] || null;
+    if (cur && cur.src && !cur.view) fitView(cur, cur.status === 'ready');
+    renderAll();
+  }
+  function renderBusy() {
+    const busy = cur && (cur.status === 'busy' || cur.status === 'queued');
+    $('busy').hidden = !busy; if (busy) $('busyTxt').textContent = cur.msg === 'Waiting' ? 'Waiting for the photo before this one' : cur.msg;
+  }
+  function renderPanel() {
+    const p = cur, ready = p && p.status === 'ready';
+    $('empty').hidden = photos.length > 0;
+    $('badge').hidden = !ready;
+    const c = ready ? count(p) : null;
+    $('pCount').textContent = ready ? c.total : '–';
+    $('badgeN').textContent = ready ? c.total : '0';
+    $('pSub').textContent = ready ? p.name : (p ? (p.status === 'error' ? p.msg : 'Analysing') : 'No photo yet');
+    const sq = $('pSq'); sq.textContent = '';
+    const mx = c ? Math.max(1, ...c.perSq) : 1;
+    for (let i = 0; i < 16; i++) { const d = document.createElement('div'); d.className = 'num'; d.textContent = c ? c.perSq[i] : ''; d.style.setProperty('--i', c ? c.perSq[i] / mx : 0); sq.append(d); }
+    $('pEdits').innerHTML = ready ? 'Auto <b class="num">' + c.auto + '</b> · added <b class="num">' + c.added + '</b> · removed <b class="num">' + c.removed + '</b>' : 'No edits';
+    $('btnReset').disabled = !ready || (!p.added.length && !p.removed.size);
+    $('btnRemove').disabled = !p;
+    $('tGridReset').hidden = !(ready && ui.adjust && p.autoQuad && p.gridEdited);
+    const S = stats(), tb = $('sessTbl').tBodies[0]; tb.textContent = '';
+    for (const q of S.ready) { const tr = tb.insertRow(); tr.insertCell().textContent = q.name; const c2 = tr.insertCell(); c2.className = 'num'; c2.textContent = count(q).total; }
+    const sr = tb.insertRow(); sr.className = 'sum'; sr.insertCell().textContent = S.ready.length > 1 ? 'Mean per grid (' + S.ready.length + ' photos)' : 'Mean per grid';
+    const sc = sr.insertCell(); sc.className = 'num'; sc.textContent = S.ready.length ? (Math.round(S.mean * 10) / 10) : '–';
+    $('concV').textContent = S.ready.length ? fmt(Math.round(S.conc)) : '–';
+    $('concL').textContent = S.ready.length ? 'cells/mL · mean × 10⁴ × dilution' : 'Add photos to see the concentration';
+    $('btnCopy').disabled = $('btnCsv').disabled = !S.ready.length;
+    $('stageBar').querySelectorAll('button').forEach(b => { b.disabled = !cur; });
+    $('tCells').setAttribute('aria-pressed', ui.cells); $('tSq').setAttribute('aria-pressed', ui.squares); $('tAdjust').setAttribute('aria-pressed', ui.adjust);
+    const h = $('hint'); h.classList.remove('warn');
+    if (!cur) h.textContent = '';
+    else if (cur.status !== 'ready') h.textContent = cur.status === 'error' ? cur.msg + '. Try another photo.' : 'Analysing the photo. This takes a few seconds.';
+    else if (ui.adjust) { h.textContent = 'Drag each orange corner onto the outer grid lines. Counts update as you move them.'; if (!cur.gridFound && !cur.gridEdited) { h.classList.add('warn'); h.textContent = 'The grid was not found automatically. ' + h.textContent; } }
+    else if (c.total < 8 && cur.cells.length < 40) { h.classList.add('warn'); h.textContent = 'Very few cells were found. Check that the photo is sharp and full resolution, then try a higher Sensitivity or tap cells to add them.'; }
+    else h.textContent = 'Tap a cell to remove it. Tap empty space to add one. Pinch to zoom, drag to move.';
+  }
+  function renderAll() { renderList(); renderBusy(); renderPanel(); schedule(); }
+
+  // ---------------------------------------------------------------- export
+  function tableRows() {
+    const S = stats(), head = ['Photo', 'Cells counted', 'Auto detected', 'Added by hand', 'Removed by hand'];
+    for (let r = 1; r <= 4; r++) for (let c = 1; c <= 4; c++) head.push('Row ' + r + ' col ' + c);
+    const rows = [head];
+    for (const p of S.ready) { const c = count(p); rows.push([p.name, c.total, c.auto, c.added, c.removed, ...c.perSq]); }
+    return { rows, S };
+  }
+  function toText(sep) {
+    const { rows, S } = tableRows(), q = v => { const s = String(v); return sep === ',' && /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = rows.map(r => r.map(q).join(sep));
+    lines.push('', ['Mean cells per grid', Math.round(S.mean * 100) / 100].map(q).join(sep), ['Dilution factor', settings.dilution].map(q).join(sep), ['Cells per mL', Math.round(S.conc)].map(q).join(sep),
+      ['Sensitivity', settings.sens].map(q).join(sep), ['Border rule', settings.rule].map(q).join(sep));
+    return lines.join('\n');
+  }
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600); }
+  $('btnCopy').addEventListener('click', async () => {
+    const text = toText('\t');
+    try { await navigator.clipboard.writeText(text); toast('Results copied. Paste them into a spreadsheet.'); }
+    catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.append(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { /* ignore */ } ta.remove(); toast(ok ? 'Results copied. Paste them into a spreadsheet.' : 'Copy was blocked. Select the table and copy it by hand.');
+    }
+  });
+  $('btnCsv').addEventListener('click', async () => {
+    const csv = toText(',');
+    // Inside claude.ai the page may not download by itself: the downloads capability asks the viewer instead.
+    try {
+      const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+      if (dl) {
+        try { await dl.save({ filename: 'cell-counts.csv', data: csv }); toast('CSV saved.'); }
+        catch (e) { toast(e && e.code === 'declined' ? 'Save cancelled.' : 'Saving a file is not available here. Use Copy results.'); }
+        return;
+      }
+    } catch (e) { /* fall through to the browser routes */ }
+    const file = new File([csv], 'cell-counts.csv', { type: 'text/csv' });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Cell counts' }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = 'cell-counts.csv'; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000); toast('CSV sent to Downloads. If nothing appeared, use Copy results.');
+  });
+
+  // ---------------------------------------------------------------- wiring
+  const pick = () => $('file').click();
+  ['btnAdd', 'btnAdd2', 'btnAdd3'].forEach(id => $(id).addEventListener('click', pick));
+  $('file').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+  vp.addEventListener('dragover', e => e.preventDefault());
+  vp.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer && e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]); });
+  $('zFit').addEventListener('click', () => { if (cur) fitView(cur, true); });
+  $('zAll').addEventListener('click', () => { if (cur) fitView(cur, false); });
+  $('zIn').addEventListener('click', () => { if (cur) { const r = vp.getBoundingClientRect(); zoomAt(cur, 1.5, r.width / 2, r.height / 2); } });
+  $('zOut').addEventListener('click', () => { if (cur) { const r = vp.getBoundingClientRect(); zoomAt(cur, 1 / 1.5, r.width / 2, r.height / 2); } });
+  $('tCells').addEventListener('click', () => { ui.cells = !ui.cells; renderPanel(); schedule(); });
+  $('tSq').addEventListener('click', () => { ui.squares = !ui.squares; renderPanel(); schedule(); });
+  $('tAdjust').addEventListener('click', () => { ui.adjust = !ui.adjust; renderPanel(); schedule(); });
+  $('tGridReset').addEventListener('click', () => { if (cur && cur.autoQuad) { cur.quad = cur.autoQuad.map(q => ({ ...q })); cur.gridEdited = false; cur.ver++; renderAll(); } });
+  $('btnReset').addEventListener('click', () => { if (cur) { cur.added = []; cur.removed = new Set(); cur.ver++; renderAll(); } });
+  $('sens').value = settings.sens; $('sensV').textContent = settings.sens;
+  $('sens').addEventListener('input', e => { settings.sens = +e.target.value; $('sensV').textContent = settings.sens; store.set('neubauer-counter.settings', settings); renderAll(); });
+  function syncRule() { document.querySelectorAll('[data-rule]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.rule === settings.rule))); $('ruleHint').textContent = RULES[settings.rule]; }
+  document.querySelectorAll('[data-rule]').forEach(b => b.addEventListener('click', () => { settings.rule = b.dataset.rule; store.set('neubauer-counter.settings', settings); syncRule(); renderAll(); }));
+  $('dil').value = settings.dilution;
+  $('dil').addEventListener('input', e => { settings.dilution = e.target.value === '' ? 1 : e.target.value; store.set('neubauer-counter.settings', settings); renderPanel(); });
+  syncRule();
+  $('btnRemove').addEventListener('click', () => { if (cur) removePhoto(cur); });
+  new ResizeObserver(() => { if (cur && cur.view && !cur.userMoved) fitView(cur, cur.fitGrid); schedule(); }).observe(vp);
+  window.addEventListener('resize', schedule);
+  window.NeubauerCounter = { addFiles, photos, count, select, get cur() { return cur; }, settings, ui, fitView, renderAll };
+  renderAll();
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
+</script></body>
+</html>

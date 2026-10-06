@@ -1,0 +1,16 @@
+{
+  "name": "Neubauer Counter",
+  "short_name": "Cell Counter",
+  "description": "Automatic cell counts for Neubauer hemocytometer photos",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1114",
+  "theme_color": "#0d1114",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
